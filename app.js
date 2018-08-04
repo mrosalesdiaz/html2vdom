@@ -1,87 +1,108 @@
 const htmlContent = document.querySelector("#htmlContent");
 const vDomContent = document.querySelector("#vDomContent");
 
-function getSufix(id, classNames) {
-  return `${id==""?"":'#'+id}${classNames.length>0?'.':''}${classNames.join(".")}`;
-}
-
-function go(root, tree) {
-  tree.children = tree.children || [];
-  tree.tagName = root.tagName.toLowerCase() + getSufix(root.id, root.className.split(" ").filter(e => e.trim() != ''));
-
-  for (var i = 0; i < root.attributes.length; i++) {
-    if (['class', 'id'].includes(root.attributes.item(i).name)) {
-      continue;
-    }
-    tree.attr = tree.attr || {};
-    tree.attr[root.attributes.item(i).name] = root.attributes.item(i).value;
-  }
-  
-  if (root.childElementCount==0 && root.hasChildNodes()) {
-    tree.children.push(root.textContent);
+/**
+ * taken from: https://gist.github.com/sstur/7379870
+ **/
+function toJSON(node) {
+  node = node || this;
+  var obj = {
+    nodeType: node.nodeType
   };
-
-  for (var i = 0; i < root.childElementCount; i++) {
-    const node = {
-      tagName: 'none',
-    };
-    go(root.children.item(i), node);
-    tree.children.push(node);
+  if (node.tagName) {
+    obj.tagName = node.tagName.toLowerCase();
+  } else
+  if (node.nodeName) {
+    obj.nodeName = node.nodeName;
   }
+  if (node.nodeValue) {
+    obj.nodeValue = node.nodeValue;
+  }
+  var attrs = node.attributes;
+  if (attrs) {
+    var length = attrs.length;
+    var arr = obj.attributes = new Array(length);
+    for (var i = 0; i < length; i++) {
+      attr = attrs[i];
+      arr[i] = [attr.nodeName, attr.nodeValue];
+    }
+  }
+  var childNodes = node.childNodes;
+  if (childNodes) {
+    length = childNodes.length;
+    arr = obj.childNodes = new Array(length);
+    for (i = 0; i < length; i++) {
+      arr[i] = toJSON(childNodes[i]);
+    }
+  }
+  return obj;
 }
 
 function stringify(tree) {
-  const fn = function(tree, arr) {
-    if (typeof(tree)=="string") {
-      arr.push(JSON.stringify(tree));
-    }else{
-      arr.push('h("' + tree.tagName + '"');
-          if (tree.attr!=null&&Object.keys(tree.attr).length > 0) {
-            arr.push(",");
-            arr.push(JSON.stringify(tree.attr));
-          }
-          if (tree.children!=null && tree.children.length > 0) {
-            arr.push(",[");
-            tree.children.forEach(e => fn(e, arr));
-            arr.push("]");
-          }
-          arr.push("),")
+  console.log(tree);
+  let counter = 0;
+  const buildId = (node, attr) => `${node.tagName}${attr.filter(e=>e[0]=='id').map(e=>`#${e[1]}`).pop()||''}${(attr.filter(e=>e[0]=='class').map(e=>e[1].split(' ').filter(i=>i.trim()!=='').map(i=>`.${i.trim()}`)).pop()||[]).join('')}`;
+  const buildAttributes= attr=>{
+    const ret=attr
+      .filter(e=>!['id','class'].includes(e[0]))
+      .reduce((prev,curr)=>{
+        prev[curr[0]]=curr[1];
+        return prev},{}); 
+      return `,${JSON.stringify(ret)}`;
+  };
+
+  const fn = (tree, arr) => {
+    if ((++counter) > 1000) return;
+
+    if (tree.nodeName === '#text') {
+      if (tree.nodeValue.trim() !== '') {
+        arr.push(`,${JSON.stringify(tree.nodeValue)}`);  
+      }
+    } else {
+      arr.push(`,h("${buildId(tree,tree.attributes)}"`);
+      if (tree.attributes.filter(e=>!['id','class'].includes(e[0])).length>0) {
+        arr.push(`${buildAttributes(tree.attributes)}`);
+      }
+      arr.push(`,[`);
+      const afterLastIndex=arr.length;
+      tree.childNodes.forEach(treeChild => {
+        fn(treeChild, arr);
+      });
+      if (afterLastIndex<arr.length) {
+        arr[afterLastIndex]=arr[afterLastIndex].substring(1);
+      }
+      arr.push(`])`);
     }
   };
-  const arr = [];
-  fn(tree, arr);
-  return arr.join('');
+
+  const tokens = [];
+  fn(tree, tokens);
+  const output=tokens.join('');
+  return output.substring(output.indexOf('[')+1,output.lastIndexOf(']')).trim();
+}
+
+function format(string){
+  /*let test=string
+    .split(',[')
+    .join(',[\n')
+    .split('])')
+    .join('\n])\n')
+    .split(',h')
+    .join(',\nh');
+*/
+  return string;
 }
 
 htmlContent.oninput = data => {
   const parser = new DOMParser();
   const xmlString = `<root>${htmlContent.value}</root>`;
   const xmlDoc = parser.parseFromString(xmlString, "text/html");
-  const tree = {};
-  go(xmlDoc.getElementsByTagName('root').item(0), tree);
-  //const output = JSON.stringify(tree,null,4);
+  const tree = toJSON(xmlDoc.getElementsByTagName('root').item(0));
+
   const output = stringify(tree);
-  vDomContent.value = output.split('h(').join('\nh(').split('),]').join(')\n]').split('h("root",[').splice(1).join('').split('\n').splice(1).slice(0, -1).join('\n');
+  vDomContent.value = format(output); 
 };
 
-htmlContent.value = `<div class="modal fade" id="exampleModalCenter" tabindex="-1" role="dialog" aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered" role="document">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="exampleModalCenterTitle">Modal title</h5>
-        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-          <span aria-hidden="true">&times;</span>
-        </button>
-      </div>
-      <div class="modal-body">
-        ...
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-primary">Save changes</button>
-      </div>
-    </div>
-  </div>
-</div>`;
+htmlContent.value = `<div class="test test " id="hello" onclick="test">test<span>sss</span>end</div>`;
 
 htmlContent.oninput();

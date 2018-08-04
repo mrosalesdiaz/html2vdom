@@ -103,6 +103,6 @@ htmlContent.oninput = data => {
   vDomContent.value = format(output); 
 };
 
-htmlContent.value = `<div class="test test " id="hello" onclick="test">test<span>sss</span>end</div>`;
+htmlContent.value = `<div id="container" class="app-text" onclick="test">TextTest<span>Smple</span>The End</div>`;
 
 htmlContent.oninput();
